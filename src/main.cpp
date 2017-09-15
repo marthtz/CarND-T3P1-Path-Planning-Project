@@ -298,21 +298,55 @@ int main()
           vector<double> next_y_vals;
 
 
-          // Follow line
+          // Follow line with spline
           //==================================================================
           double dist_inc = 0.4;
+          unsigned int spline_dist = 15;
+          vector<double> X, Y;
           vector<double> ReturnXY;
+
           for(int i = 0; i < 50; i++)
           {
-            double s_val = car_s + (dist_inc * (i+1));
-            //double s_val = car_s + (dist_inc * i);
+            double s_val = car_s + (dist_inc * i);
             double d_val = 6; // car is in center lane which is 6m from origin
 
             ReturnXY = getXY(s_val, d_val, map_waypoints_s, map_waypoints_x, map_waypoints_y);
 
             next_x_vals.push_back(ReturnXY[0]);
-            next_y_vals.push_back(ReturnXY[1]);
+
+            if ( (i % spline_dist) == 0 )
+            {
+              X.push_back(ReturnXY[0]);
+              Y.push_back(ReturnXY[1]);
+            }
           }
+
+          // Calculate spline
+          tk::spline s;
+          s.set_points(X,Y);    // currently it is required that X is already sorted
+
+          for(int i = 0; i < 50; i++)
+          {
+            next_y_vals.push_back(s(next_x_vals[i]));
+          }
+          //==================================================================
+
+
+          // Follow line
+          //==================================================================
+          // double dist_inc = 0.4;
+          // vector<double> ReturnXY;
+          // for(int i = 0; i < 50; i++)
+          // {
+          //   double s_val = car_s + (dist_inc * (i+1));
+          //   //double s_val = car_s + (dist_inc * i);
+          //   double d_val = 6; // car is in center lane which is 6m from origin
+
+          //   ReturnXY = getXY(s_val, d_val, map_waypoints_s, map_waypoints_x, map_waypoints_y);
+
+          //   next_x_vals.push_back(ReturnXY[0]);
+          //   next_y_vals.push_back(ReturnXY[1]);
+          // }
           //==================================================================
 
 
