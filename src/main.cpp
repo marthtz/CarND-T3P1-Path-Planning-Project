@@ -224,7 +224,9 @@ int main()
   vector<double> map_waypoints_dy;
 
   int lane = 1;
+  int lane_change_wp = 0;
   double ref_vel = 0;
+  double max_vel = 49.5;
 
   // Waypoint map to read from
   string map_file_ = "../data/highway_map.csv";
@@ -255,7 +257,7 @@ int main()
     map_waypoints_dy.push_back(d_y);
   }
 
-  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy,&lane,&ref_vel](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  h.onMessage([&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy,&lane,&ref_vel,&max_vel,&lane_change_wp](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode)
   {
     // "42" at the start of the message means there's a websocket message event.
@@ -300,7 +302,7 @@ int main()
           //vector<vector<double>> sensor_fusion = j[1]["sensor_fusion"];
 
 
-
+          //cout << "Car speed 1: " << car_speed << endl;
 
 //==============================================================================
 //==============================================================================
@@ -314,7 +316,37 @@ int main()
             car_s = end_path_s;
           }
 
+          int next_wp;
           bool too_close = false;
+          bool change_lane = false;
+          bool lcl = false;
+          bool lcr = false;
+
+          double closestDist_s = 100000;
+          double closest_speed = 100000;
+
+          double ref_x = car_x;
+          double ref_y = car_y;
+          double ref_yaw = deg2rad(car_yaw);
+
+          ref_vel = max_vel;
+
+          next_wp = NextWaypoint(ref_x, ref_y, ref_yaw, map_waypoints_x,map_waypoints_y);
+
+          if(prev_size > 2)
+          {
+            ref_x = previous_path_x[prev_size-1];
+            double ref_x_prev = previous_path_x[prev_size-2];
+            ref_y = previous_path_y[prev_size-1];
+            double ref_y_prev = previous_path_y[prev_size-2];
+            ref_yaw = atan2(ref_y-ref_y_prev,ref_x-ref_x_prev);
+            next_wp = NextWaypoint(ref_x,ref_y,ref_yaw,map_waypoints_x,map_waypoints_y);
+
+            car_s = end_path_s;
+
+            car_speed = (sqrt((ref_x-ref_x_prev)*(ref_x-ref_x_prev)+(ref_y-ref_y_prev)*(ref_y-ref_y_prev))/.02)*2.237;
+            //cout << "Car speed 2: " << car_speed << endl;
+          }
 
           // find ref_v to use
           for (int i = 0; i < sensor_fusion.size(); i++)
@@ -333,29 +365,273 @@ int main()
               check_car_s += ((double)prev_size * 0.02 * check_speed);  // if using previous points can project s value out
 
               // check s values greater than ego car and s gap
-              if ((check_car_s > car_s) && ((check_car_s - car_s) < 30) )
+              if((check_car_s > car_s) && ((check_car_s-car_s) < 30) && ((check_car_s-car_s) < closestDist_s ) )
               {
                 // do some logic here, lower speed so you don't crash
                 // maybe set flag to change lanes
-                too_close = true;
+                //too_close = true;
+                closestDist_s = (check_car_s - car_s);
+                //closest_speed = check_speed;
+                change_lane = true;
+                cout << "trigger lane change" << endl;
 
-                if (lane > 0)
+                if ((check_car_s - car_s) < 20)
                 {
-                  lane = 0;
+                  //too_close = true;
+                  ref_vel = check_speed*2.237-5;
+                  cout << "too close" << endl;
                 }
+                else
+                {
+                   ref_vel = check_speed*2.237;
+                }
+
+
+                //cout << "Ref vel: " << ref_vel << "    check speed: " << check_speed*2.237 << endl;
+
+                // if (lane > 0)
+                // {
+                //   lane -= 1;
+                //   if (lane < 0)
+                //   {
+                //     lane = 0;
+                //   }
+                // }
+                // else
+                // {
+                //   lane += 1;
+                //   if (lane > 2)
+                //   {
+                //     lane = 2;
+                //   }
+                // }
               }
             }
           }
 
 
-          if (too_close)
+          // if (too_close)
+          // {
+          //   if (ref_vel > closest_speed)
+          //     ref_vel -= 0.2237;   // 5m/s^2
+          //     if (ref_vel < closest_speed)
+          //       ref_vel = closest_speed;
+          // }
+          // else if (ref_vel < 49.5)
+          // {
+          //   ref_vel += 0.2237;
+          // }
+
+          if(ref_vel > car_speed)
           {
-            ref_vel -= 1.5 * 0.224;   // 5m/s^2
+            car_speed += 0.224;
+            //cout << "Car speed 3: " << car_speed << endl;
           }
-          else if (ref_vel < 49.5)
+          else if(ref_vel < car_speed)
           {
-            ref_vel += 1.5 * 0.224;
+            car_speed -= 0.224;
+            //cout << "Car speed 4: " << car_speed << endl;
           }
+
+
+
+
+
+
+
+
+
+            //try to change lanes if too close to car in front
+            if(change_lane && ((next_wp-lane_change_wp)%map_waypoints_x.size() > 2))
+           //if (change_lane)
+            {
+              bool changed_lanes = false;
+              //first try to change to left lane
+              if(lane != 0 && !changed_lanes)
+              {
+                bool lane_safe = true;
+                for(int i = 0; i < sensor_fusion.size(); i++)
+                {
+                  //car is in left lane
+                  float d = sensor_fusion[i][6];
+                  if(d < (2+4*(lane-1)+2) && d > (2+4*(lane-1)-2) )
+                  {
+                    double vx = sensor_fusion[i][3];
+                    double vy = sensor_fusion[i][4];
+                    double check_speed = sqrt(vx*vx+vy*vy);
+
+                    double check_car_s = sensor_fusion[i][5];
+                    check_car_s+=((double)prev_size*.02*check_speed);
+                    double dist_s = check_car_s-car_s;
+                    if(dist_s < 15 && dist_s > -15)
+                    {
+                      lane_safe = false;
+                    }
+                  }
+                }
+                if(lane_safe)
+                {
+                  changed_lanes = true;
+                  lane -= 1;
+                  lane_change_wp = next_wp;
+                }
+              }
+              //next try to change to right lane
+              if(lane != 2 && !changed_lanes)
+              {
+                bool lane_safe = true;
+                for(int i = 0; i < sensor_fusion.size(); i++)
+                {
+                  //car is in right lane
+                  float d = sensor_fusion[i][6];
+                  if(d < (2+4*(lane+1)+2) && d > (2+4*(lane+1)-2) )
+                  {
+                    double vx = sensor_fusion[i][3];
+                    double vy = sensor_fusion[i][4];
+                    double check_speed = sqrt(vx*vx+vy*vy);
+
+                    double check_car_s = sensor_fusion[i][5];
+                    check_car_s+=((double)prev_size*.02*check_speed);
+                    double dist_s = check_car_s-car_s;
+                    if(dist_s < 20 && dist_s > -10)
+                    {
+                      lane_safe = false;
+                    }
+                  }
+                }
+                if(lane_safe)
+                {
+                  changed_lanes = true;
+                  lane += 1;
+                  lane_change_wp = next_wp;
+                }
+
+              }
+
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+          // if (change_lane)
+          // {
+          //   // check left
+          //   // find ref_v to use
+          //   if (lane > 0)
+          //   {
+          //     int lane_check = lane - 1;
+          //     for (int i = 0; i < sensor_fusion.size(); i++)
+          //     {
+          //       // car is in my lane to the left
+          //       float d = sensor_fusion[i][6];
+
+          //       if (d < (2 + 4*lane_check+2) && d > (2+4*lane_check-2))
+          //       {
+          //         lcl = true;
+          //         double vx = sensor_fusion[i][3];
+          //         double vy = sensor_fusion[i][4];
+
+          //         double check_speed = sqrt(vx*vx + vy*vy);
+          //         double check_car_s = sensor_fusion[i][5];
+
+          //         check_car_s += ((double)prev_size * 0.02 * check_speed);  // if using previous points can project s value out
+
+          //         double dist_s = check_car_s-car_s;
+          //         if(dist_s < 20 && dist_s > -10)
+          //         {
+          //           lcl = false;
+          //           break;
+          //         }
+
+          //         // check s values greater than ego car and s gap
+          //         // if ((check_car_s > car_s) && ((check_car_s - car_s) < 15))
+          //         // {
+          //         //   lcl = false;
+          //         //   break;
+          //         // }
+          //         // else
+          //         // {
+          //         //   // check s values smaller than ego car and s gap
+          //         //   if ((car_s > check_car_s) && ((car_s - check_car_s) < 15))
+          //         //   {
+          //         //     lcl = false;
+          //         //     break;
+          //         //   }
+          //         // }
+          //       }
+          //     }
+          //   } // end check left
+
+          //   //cout << "lcl " << lcl << endl;
+
+          //   // check right
+          //   // find ref_v to use
+          //   if (lane < 2)
+          //   {
+          //     int lane_check = lane + 1;
+          //     for (int i = 0; i < sensor_fusion.size(); i++)
+          //     {
+          //       // car is in my lane to the left
+          //       float d = sensor_fusion[i][6];
+
+          //       if (d < (2 + 4*lane_check+2) && d > (2+4*lane_check-2))
+          //       {
+          //         lcr = true;
+          //         double vx = sensor_fusion[i][3];
+          //         double vy = sensor_fusion[i][4];
+
+          //         double check_speed = sqrt(vx*vx + vy*vy);
+          //         double check_car_s = sensor_fusion[i][5];
+
+          //         check_car_s += ((double)prev_size * 0.02 * check_speed);  // if using previous points can project s value out
+
+          //         double dist_s = check_car_s-car_s;
+          //         if(dist_s < 20 && dist_s > -10)
+          //         {
+          //           lcr = false;
+          //           break;
+          //         }
+
+          //         // check s values greater than ego car and s gap
+          //         // if ((check_car_s > car_s) && ((check_car_s - car_s) < 15))
+          //         // {
+          //         //   lcr = false;
+          //         //   break;
+          //         // }
+          //         // else
+          //         // {
+          //         //   // check s values smaller than ego car and s gap
+          //         //   if ((car_s > check_car_s) && ((car_s - check_car_s) < 15))
+          //         //   {
+          //         //     lcr = false;
+          //         //     break;
+          //         //   }
+          //         // }
+          //       }
+          //     }
+          //   } // end check right
+          // }
+          // //cout << "lcr " << lcr << endl;
+
+
+          // if (lcl)
+          // {
+          //   lane -= 1;
+          // }
+          // else if (lcr)
+          // {
+          //   lane += 1;
+          // }
 
 
 
@@ -368,9 +644,9 @@ int main()
 
           // reference x, y, yaw states
           // either we will reference the starting points as where the is or at the previkous paths and point
-          double ref_x = car_x;
-          double ref_y = car_y;
-          double ref_yaw = deg2rad(car_yaw);
+          //double ref_x = car_x;
+          //double ref_y = car_y;
+          //double ref_yaw = deg2rad(car_yaw);
 
           // if previous size is almost empty
           if (prev_size < 2)
@@ -405,6 +681,8 @@ int main()
             ptsy.push_back(ref_y_prev);
             ptsy.push_back(ref_y);
           }
+
+          //cout << "Lane " << lane << endl;
 
           // in frenet add evenly 30m spaced points ahead of the starting reference
           vector<double> next_wp0 = getXY(car_s + 1*30, (2+4*lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
@@ -457,9 +735,22 @@ int main()
           double x_add_on = 0;
 
           // fill up the rest of our path planner after filling if with previous points, here we will always ouput 50 points
-          for (int i = 0; i <= 50 - previous_path_x.size(); i++)
+          //cout << "prev path size: " << previous_path_x.size() << endl;
+          for (int i = 1; i <= 50 - previous_path_x.size(); i++)
           {
-            double N = (target_dist / (0.02 * ref_vel/2.24));
+            // if(ref_vel > car_speed)
+            // {
+            //   car_speed += 0.224;
+            //   cout << "Car speed 3: " << car_speed << endl;
+            // }
+            // else if(ref_vel < car_speed)
+            // {
+            //   car_speed -= 0.224;
+            //   cout << "Car speed 4: " << car_speed << endl;
+            // }
+
+            //double N = (target_dist / (0.02 * ref_vel/2.237));
+            double N = (target_dist / (0.02 * car_speed/2.237));
             double x_point = x_add_on + (target_x / N);
             double y_point = s(x_point);
 
