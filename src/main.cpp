@@ -48,6 +48,38 @@ double get_lane_center_in_frenet(int lane)
   return double((lane * lane_width) + (lane_width/2));
 }
 
+//==============================================================================
+// Check if lane is free (only by gap)
+bool check_lane_free(int lane_to_check, json sensor_fusion, double ego_car_s, int prev_size)
+{
+  bool lane_free = true;
+
+  for(int i = 0; i < sensor_fusion.size(); i++)
+  {
+    //car is in left lane
+    float d = sensor_fusion[i][6];
+    if (get_lane_from_frenet(d) == lane_to_check)
+    {
+      double vx = sensor_fusion[i][3];
+      double vy = sensor_fusion[i][4];
+      double check_car_speed = sqrt(vx*vx+vy*vy);
+
+      double check_car_s = sensor_fusion[i][5];
+      check_car_s += ((double)prev_size * time_step() * check_car_speed);
+
+      double distance_ego_to_check = check_car_s - ego_car_s;
+
+      if((distance_ego_to_check < 10) &&
+         (distance_ego_to_check > -10))
+      {
+        lane_free = false;
+        break;
+      }
+    }
+  }
+  return lane_free;
+}
+
 
 //==============================================================================
 double deg2rad(double x)
@@ -415,7 +447,7 @@ int main()
                 trigger_lane_change = true;
                 cout << "trigger lane change" << endl;
 
-                if (distance_closest_check < 20)
+                if (distance_closest_check < 15)
                 {
                   ref_vel -= 5;
                   cout << "too close" << endl;
@@ -423,7 +455,6 @@ int main()
               }
             }
           }
-
 
 
           if (ref_vel > ego_car_speed)
@@ -438,7 +469,6 @@ int main()
           }
 
 
-
           //try to change lanes if too close to car in front
           if ((trigger_lane_change) &&
               ((next_wp - lane_change_wp) % map_waypoints_x.size()) > 3)
@@ -446,71 +476,15 @@ int main()
             //first try to change to left lane
             if(ego_lane > 0)
             {
-              lc_left = true;
-
-              for(int i = 0; i < sensor_fusion.size(); i++)
-              {
-                //car is in left lane
-                float d = sensor_fusion[i][6];
-                if (get_lane_from_frenet(d) == (ego_lane-1))
-                {
-                  double vx = sensor_fusion[i][3];
-                  double vy = sensor_fusion[i][4];
-                  double check_car_speed = sqrt(vx*vx+vy*vy);
-
-                  double check_car_s = sensor_fusion[i][5];
-                  check_car_s += ((double)prev_size * time_step() * check_car_speed);
-
-                  double distance_ego_to_check = check_car_s - ego_car_s;
-
-                  if((distance_ego_to_check < 20) &&
-                     (distance_ego_to_check > -10))
-                  {
-                    lc_left = false;
-                    break;
-                  }
-                }
-              }
+              lc_left = check_lane_free(ego_lane - 1, sensor_fusion, ego_car_s, prev_size);
             }
 
             //next try to change to right lane
             if(ego_lane < 2)
             {
-              lc_right = true;
-
-              for(int i = 0; i < sensor_fusion.size(); i++)
-              {
-                //car is in right lane
-                float d = sensor_fusion[i][6];
-                if (get_lane_from_frenet(d) == (ego_lane+1))
-                {
-                  double vx = sensor_fusion[i][3];
-                  double vy = sensor_fusion[i][4];
-                  double check_car_speed = sqrt(vx*vx+vy*vy);
-
-                  double check_car_s = sensor_fusion[i][5];
-                  check_car_s += ((double)prev_size * time_step() * check_car_speed);
-
-                  double distance_ego_to_check = check_car_s - ego_car_s;
-
-                  if((distance_ego_to_check < 20) &&
-                     (distance_ego_to_check > -10))
-                  {
-                    lc_right = false;
-                    break;
-                  }
-                }
-              }
+              lc_right = check_lane_free(ego_lane + 1, sensor_fusion, ego_car_s, prev_size);
             }
           }
-
-
-          // TODO
-          //  - choose best lane by checking speed of car ahead
-          //  - try to stay in center lane
-          //  - choose best lane by changing to lane with largest distance to car ahead
-          //  - check for cars changing lanes
-
 
 
           if (lc_left)
@@ -524,6 +498,13 @@ int main()
             lane_change_wp = next_wp;
           }
 
+
+
+          // TODO
+          //  - choose best lane by checking speed of car ahead
+          //  - try to stay in center lane
+          //  - choose best lane by changing to lane with largest distance to car ahead
+          //  - check for cars changing lanes
 
 
 
