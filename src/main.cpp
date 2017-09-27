@@ -16,6 +16,10 @@ using namespace std;
 using json = nlohmann::json;
 
 
+
+#define USE_COST_FUNCTIONS      1
+
+
 // Speed limit of the track
 constexpr double speedlimit() { return 49.5; }
 
@@ -79,6 +83,82 @@ bool check_lane_free(int lane_to_check, json sensor_fusion, double ego_car_s, in
   }
   return lane_free;
 }
+
+
+//==============================================================================
+// Get closest car ahead
+vector<double> get_closest_car_ahead(int lane_to_check, json sensor_fusion, double ego_car_s, int prev_size)
+{
+  double distance_closest_check = 100; //100000;
+  double closest_speed = 100000;
+
+  for(int i = 0; i < sensor_fusion.size(); i++)
+  {
+    //car is in left lane
+    float d = sensor_fusion[i][6];
+    if (get_lane_from_frenet(d) == lane_to_check)
+    {
+      double vx = sensor_fusion[i][3];
+      double vy = sensor_fusion[i][4];
+      double check_car_speed = sqrt((vx * vx) + (vy*vy));
+
+      double check_car_s = sensor_fusion[i][5];
+      check_car_s += ((double)prev_size * time_step() * check_car_speed);
+
+      double distance_ego_to_check = check_car_s - ego_car_s;
+
+      if((check_car_s > ego_car_s) &&
+         (distance_ego_to_check < distance_closest_check ))
+      {
+        distance_closest_check = distance_ego_to_check;
+        closest_speed = check_car_speed * convert_kmh_to_mph();
+      }
+    }
+  }
+  return {distance_closest_check, closest_speed};
+}
+
+
+//==============================================================================
+// Get closest car behind
+vector<double> get_closest_car_behind(int lane_to_check, json sensor_fusion, double ego_car_s, int prev_size)
+{
+  double distance_closest_check = 50;
+  double closest_speed = 100000;
+
+  for(int i = 0; i < sensor_fusion.size(); i++)
+  {
+    //car is in left lane
+    float d = sensor_fusion[i][6];
+    if (get_lane_from_frenet(d) == lane_to_check)
+    {
+      double vx = sensor_fusion[i][3];
+      double vy = sensor_fusion[i][4];
+      double check_car_speed = sqrt((vx * vx) + (vy*vy));
+
+      double check_car_s = sensor_fusion[i][5];
+      check_car_s += ((double)prev_size * time_step() * check_car_speed);
+
+      double distance_ego_to_check = ego_car_s - check_car_s;
+
+      if((check_car_s < ego_car_s) &&
+         (distance_ego_to_check < distance_closest_check ))
+      {
+        distance_closest_check = distance_ego_to_check;
+        closest_speed = check_car_speed * convert_kmh_to_mph();
+      }
+    }
+  }
+  return {distance_closest_check, closest_speed};
+}
+
+
+//==============================================================================
+double normalise(double x)
+{
+  return 2.0f / (1.0f + exp(-x)) - 1.0f;
+}
+
 
 
 //==============================================================================
@@ -369,7 +449,6 @@ int main()
           bool lc_right = false;
 
           double distance_closest_check = 100000;
-          double closest_speed = 100000;
 
           // reference x, y, yaw states
           // either we will reference the starting points as where the is or at the previous paths and point
@@ -416,8 +495,6 @@ int main()
           }
 
 
-
-
           // find ref_v to use
           for (int i=0; i<sensor_fusion.size(); i++)
           {
@@ -445,7 +522,7 @@ int main()
                 ref_vel = check_car_speed * convert_kmh_to_mph();
 
                 trigger_lane_change = true;
-                cout << "trigger lane change" << endl;
+                cout << "\ntrigger lane change" << endl;
 
                 if (distance_closest_check < 15)
                 {
@@ -459,16 +536,16 @@ int main()
 
           if (ref_vel > ego_car_speed)
           {
-            ego_car_speed += 0.3;
+            ego_car_speed += 0.28;
             //cout << "Car speed 3: " << ego_car_speed << endl;
           }
           else if(ref_vel < ego_car_speed)
           {
-            ego_car_speed -= 0.3;
+            ego_car_speed -= 0.28;
             //cout << "Car speed 4: " << ego_car_speed << endl;
           }
 
-
+#if !USE_COST_FUNCTIONS
           //try to change lanes if too close to car in front
           if ((trigger_lane_change) &&
               ((next_wp - lane_change_wp) % map_waypoints_x.size()) > 3)
@@ -498,14 +575,106 @@ int main()
             lane_change_wp = next_wp;
           }
 
-
-
+#else
           // TODO
           //  - choose best lane by checking speed of car ahead
           //  - try to stay in center lane
           //  - choose best lane by changing to lane with largest distance to car ahead
           //  - check for cars changing lanes
 
+          int best_lane = ego_lane;
+
+          //try to change lanes if too close to car in front
+          if ((trigger_lane_change) &&
+              ((next_wp - lane_change_wp) % map_waypoints_x.size()) > 3)
+          {
+            vector<int> lanes_available;
+            double distance_closest_check;
+            double closest_speed;
+            double min_distance = 10;
+            double best_cost = 1000000;
+
+            switch (ego_lane)
+            {
+              case 0:
+                lanes_available = {0, 1};
+                break;
+              case 1:
+                lanes_available = {0, 1, 2};
+                break;
+              case 2:
+                lanes_available = {1, 2};
+                break;
+              default:
+                lanes_available = {};
+                break;
+            }
+
+            for (int lane_check: lanes_available)
+            {
+              double cost = 0;
+
+              cout << "Lane to check: " << lane_check << endl;
+
+              // lane cost
+              if (lane_check != ego_lane)
+              {
+                cost += 500;
+                cout << "\tAdd cost lane change. Total cost: " << cost << endl;
+              }
+
+              // get distance and speed of closest car ahead
+              vector<double> car_ahead = get_closest_car_ahead(lane_check, sensor_fusion, ego_car_s, prev_size);
+              distance_closest_check = car_ahead[0];
+              closest_speed = car_ahead[1];
+              cout << "\tCar ahead dist/speed: " << distance_closest_check << " / " << closest_speed << "   (ref_vel):" << ref_vel << endl;
+
+              // speed cost
+              double norm = normalise(2 *  (speedlimit() - closest_speed) / closest_speed);
+              cost +=  norm * 1000;
+              cout << "\tAdd cost speed. Total cost: " << cost << "   Norm: " << norm << endl;
+
+              // distance ahead cost
+              cost += normalise(2*min_distance/distance_closest_check) * 1000;
+              cout << "\tAdd cost distance ahead. Total cost: " << cost << endl;
+              if (distance_closest_check < min_distance)
+              {
+                cost += 10000;
+                cout << "\tAdd cost ahead min_distance. Total cost: " << cost << endl;
+              }
+
+              // get distance and speed of closest car behind
+              vector<double> car_behind = get_closest_car_behind(lane_check, sensor_fusion, ego_car_s, prev_size);
+              distance_closest_check = car_behind[0];
+              closest_speed = car_behind[1];
+              cout << "\tCar behind dist/speed: " << distance_closest_check << " / " << closest_speed << endl;
+
+              // distance behind cost
+              //cost += normalise(2*min_distance/distance_closest_check) * 1000;
+              //cout << "\tAdd cost distance behind. Total cost: " << cost << endl;
+              if (distance_closest_check < min_distance)
+              {
+                cost += 10000;
+                cout << "\tAdd cost behind min_distance. Total cost: " << cost << endl;
+              }
+
+              if (cost < best_cost)
+              {
+                best_lane = lane_check;
+                best_cost = cost;
+                cout << "\tBest cost / lane: " << best_cost << " / " << best_lane << endl;
+              }
+            }
+
+            // change lanes
+            ego_lane = best_lane;
+          }
+
+          if (best_lane != ego_lane)
+          {
+            lane_change_wp = next_wp;
+          }
+#endif
 
 
           // create list of widely spaces x, y waypoints, evenly spaced at 30m
@@ -547,7 +716,7 @@ int main()
             ptsy.push_back(ref_y);
           }
 
-          //cout << "Lane " << lane << endl;
+          //cout << "ego_lane " << ego_lane << endl;
 
           // in frenet add evenly 30m spaced points ahead of the starting reference
           vector<double> next_wp0 = getXY(ego_car_s + (1 * spline_distance()), get_lane_center_in_frenet(ego_lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
