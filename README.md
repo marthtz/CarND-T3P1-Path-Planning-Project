@@ -21,7 +21,7 @@ The program is executed without any arguments using the following command (for b
 
 A video of the car driving one lap in the simulator is uploaded to Youtube:
 
-   [![](carnd_t3p1_pathplanning_yt.jpg)](https://youtu.be/-Ap98Lk72Sc)
+   [![](carnd_t3p1_pathplanning_yt2.jpg)](https://youtu.be/-Ap98Lk72Sc)
 
 ## Implementation
 The main parts of the implementation can be summarized as:
@@ -77,7 +77,7 @@ The current implementation drives the car smoothly around the track at speed lim
 
 A video of the car driving one lap in the simulator is uploaded to Youtube:
 
-   [![](carnd_t3p1_pathplanning_yt.jpg)](https://youtu.be/-Ap98Lk72Sc)
+   [![](carnd_t3p1_pathplanning_yt2.jpg)](https://youtu.be/-Ap98Lk72Sc)
 
 ---
 
