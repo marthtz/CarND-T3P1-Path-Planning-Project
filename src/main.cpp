@@ -23,6 +23,13 @@ using json = nlohmann::json;
 
 
 //==============================================================================
+// Position defines
+//==============================================================================
+#define AHEAD      0
+#define BEHIND     1
+
+
+//==============================================================================
 // Constants
 //==============================================================================
 // Speed limit of the track
@@ -97,12 +104,13 @@ bool check_lane_free(int lane_to_check, json sensor_fusion, double ego_car_s, in
 
 
 //==============================================================================
-// Get closest car ahead
+// Get closest car
 //==============================================================================
-vector<double> get_closest_car_ahead(int lane_to_check, json sensor_fusion, double ego_car_s, int prev_size)
+vector<double> get_closest_car(int lane_to_check, json sensor_fusion, double ego_car_s, int prev_size, int position)
 {
   double distance_closest_check = 100; //100000;
   double closest_speed = 100000;
+  bool car_position_check = false;
 
   for(int i = 0; i < sensor_fusion.size(); i++)
   {
@@ -117,45 +125,24 @@ vector<double> get_closest_car_ahead(int lane_to_check, json sensor_fusion, doub
       double check_car_s = sensor_fusion[i][5];
       check_car_s += ((double)prev_size * time_step() * check_car_speed);
 
-      double distance_ego_to_check = check_car_s - ego_car_s;
+      double distance_ego_to_check = abs(check_car_s - ego_car_s);
 
-      if((check_car_s > ego_car_s) &&
-         (distance_ego_to_check < distance_closest_check ))
+      if (position == AHEAD)
       {
-        distance_closest_check = distance_ego_to_check;
-        closest_speed = check_car_speed * convert_kmh_to_mph();
+        if (check_car_s > ego_car_s)
+        {
+          car_position_check = true;
+        }
       }
-    }
-  }
-  return {distance_closest_check, closest_speed};
-}
+      else if (position == BEHIND)
+      {
+        if (check_car_s < ego_car_s)
+        {
+          car_position_check = true;
+        }
+      }
 
-
-//==============================================================================
-// Get closest car behind
-//==============================================================================
-vector<double> get_closest_car_behind(int lane_to_check, json sensor_fusion, double ego_car_s, int prev_size)
-{
-  double distance_closest_check = 50;
-  double closest_speed = 100000;
-
-  for(int i = 0; i < sensor_fusion.size(); i++)
-  {
-    //car is in left lane
-    float d = sensor_fusion[i][6];
-    if (get_lane_from_frenet(d) == lane_to_check)
-    {
-      double vx = sensor_fusion[i][3];
-      double vy = sensor_fusion[i][4];
-      double check_car_speed = sqrt((vx * vx) + (vy*vy));
-
-      double check_car_s = sensor_fusion[i][5];
-      check_car_s += ((double)prev_size * time_step() * check_car_speed);
-
-      double distance_ego_to_check = ego_car_s - check_car_s;
-
-      if((check_car_s < ego_car_s) &&
-         (distance_ego_to_check < distance_closest_check ))
+      if (car_position_check && (distance_ego_to_check < distance_closest_check))
       {
         distance_closest_check = distance_ego_to_check;
         closest_speed = check_car_speed * convert_kmh_to_mph();
@@ -651,7 +638,7 @@ int main()
               }
 
               // Get distance and speed of closest car ahead
-              vector<double> car_ahead = get_closest_car_ahead(lane_check, sensor_fusion, ego_car_s, prev_size);
+              vector<double> car_ahead = get_closest_car(lane_check, sensor_fusion, ego_car_s, prev_size, AHEAD);
               distance_closest_check = car_ahead[0];
               closest_speed = car_ahead[1];
               cout << "\tCar ahead dist/speed: " << distance_closest_check << " / " << closest_speed << "   (ref_vel):" << ref_vel << endl;
@@ -674,7 +661,7 @@ int main()
               }
 
               // Get distance and speed of closest car behind
-              vector<double> car_behind = get_closest_car_behind(lane_check, sensor_fusion, ego_car_s, prev_size);
+              vector<double> car_behind = get_closest_car(lane_check, sensor_fusion, ego_car_s, prev_size, BEHIND);
               distance_closest_check = car_behind[0];
               closest_speed = car_behind[1];
               cout << "\tCar behind dist/speed: " << distance_closest_check << " / " << closest_speed << endl;
