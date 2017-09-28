@@ -19,6 +19,10 @@ The program is executed without any arguments using the following command (for b
 ./path_planning
 ```
 
+A video of the car driving one lap in the simulator is uploaded to Youtube:
+
+   [![](carnd_t3p1_pathplanning_yt.jpg)](https://youtu.be/-Ap98Lk72Sc)
+
 ## Implementation
 The main parts of the implementation can be summarized as:
 1. Determine EGO vehicle parameters (speed, previous path points, etc)
@@ -73,7 +77,7 @@ The current implementation drives the car smoothly around the track at speed lim
 
 A video of the car driving one lap in the simulator is uploaded to Youtube:
 
-[![](carnd_t3p1_pathplanning_yt.jpg)](https://youtu.be/-Ap98Lk72Sc)
+   [![](carnd_t3p1_pathplanning_yt.jpg)](https://youtu.be/-Ap98Lk72Sc)
 
 ---
 
