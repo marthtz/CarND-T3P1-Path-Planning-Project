@@ -16,10 +16,15 @@ using namespace std;
 using json = nlohmann::json;
 
 
-
+//==============================================================================
+// Switch to use cosst functions or simple lane check
+//==============================================================================
 #define USE_COST_FUNCTIONS      1
 
 
+//==============================================================================
+// Constants
+//==============================================================================
 // Speed limit of the track
 constexpr double speedlimit() { return 49.5; }
 
@@ -38,22 +43,28 @@ constexpr double pi() { return M_PI; }
 // Simulator lane width in meter
 constexpr int lane_width = 4;
 
+
 //==============================================================================
 // Get the lane from Frenet coordinates
+//==============================================================================
 int get_lane_from_frenet(double d)
 {
   return int(floor(d / lane_width));
 }
 
+
 //==============================================================================
 // Get the lane center in Frenet coordinates (d)
+//==============================================================================
 double get_lane_center_in_frenet(int lane)
 {
   return double((lane * lane_width) + (lane_width/2));
 }
 
+
 //==============================================================================
 // Check if lane is free (only by gap)
+//==============================================================================
 bool check_lane_free(int lane_to_check, json sensor_fusion, double ego_car_s, int prev_size)
 {
   bool lane_free = true;
@@ -87,6 +98,7 @@ bool check_lane_free(int lane_to_check, json sensor_fusion, double ego_car_s, in
 
 //==============================================================================
 // Get closest car ahead
+//==============================================================================
 vector<double> get_closest_car_ahead(int lane_to_check, json sensor_fusion, double ego_car_s, int prev_size)
 {
   double distance_closest_check = 100; //100000;
@@ -121,6 +133,7 @@ vector<double> get_closest_car_ahead(int lane_to_check, json sensor_fusion, doub
 
 //==============================================================================
 // Get closest car behind
+//==============================================================================
 vector<double> get_closest_car_behind(int lane_to_check, json sensor_fusion, double ego_car_s, int prev_size)
 {
   double distance_closest_check = 50;
@@ -154,6 +167,8 @@ vector<double> get_closest_car_behind(int lane_to_check, json sensor_fusion, dou
 
 
 //==============================================================================
+// 
+//==============================================================================
 double normalise(double x)
 {
   return 2.0f / (1.0f + exp(-x)) - 1.0f;
@@ -162,6 +177,8 @@ double normalise(double x)
 
 
 //==============================================================================
+// Convert angle in degree to radians
+//==============================================================================
 double deg2rad(double x)
 {
   return x * pi() / 180;
@@ -169,11 +186,12 @@ double deg2rad(double x)
 
 
 //==============================================================================
+// Convert angle in radians to degree
+//==============================================================================
 double rad2deg(double x)
 {
   return x * 180 / pi();
 }
-
 
 
 //==============================================================================
@@ -202,6 +220,7 @@ string hasData(string s)
 
 
 //==============================================================================
+// Get Euclidian distance
 //==============================================================================
 double distance(double x1, double y1, double x2, double y2)
 {
@@ -209,12 +228,11 @@ double distance(double x1, double y1, double x2, double y2)
 }
 
 
-
 //==============================================================================
+// Get closest waypoint to passed coordinated
 //==============================================================================
 int ClosestWaypoint(double x, double y, vector<double> maps_x, vector<double> maps_y)
 {
-
   double closestLen = 100000; //large number
   int closestWaypoint = 0;
 
@@ -237,6 +255,7 @@ int ClosestWaypoint(double x, double y, vector<double> maps_x, vector<double> ma
 
 
 //==============================================================================
+// Get next waypoint to passed coordinated
 //==============================================================================
 int NextWaypoint(double x, double y, double theta, vector<double> maps_x, vector<double> maps_y)
 {
@@ -256,7 +275,6 @@ int NextWaypoint(double x, double y, double theta, vector<double> maps_x, vector
   }
 
   return closestWaypoint;
-
 }
 
 
@@ -268,11 +286,11 @@ vector<double> getFrenet(double x, double y, double theta, vector<double> maps_x
   int next_wp = NextWaypoint(x, y, theta, maps_x, maps_y);
   int prev_wp;
 
-  prev_wp = next_wp-1;
+  prev_wp = next_wp - 1;
 
   if (next_wp == 0)
   {
-    prev_wp  = maps_x.size()-1;
+    prev_wp  = maps_x.size() - 1;
   }
 
   double n_x = maps_x[next_wp] - maps_x[prev_wp];
@@ -309,7 +327,6 @@ vector<double> getFrenet(double x, double y, double theta, vector<double> maps_x
   frenet_s += distance(0, 0, proj_x, proj_y);
 
   return {frenet_s, frenet_d};
-
 }
 
 
@@ -424,6 +441,7 @@ int main()
           double car_d = j[1]["d"];
           double car_yaw = j[1]["yaw"];
           double ego_car_speed = j[1]["speed"];
+          //cout << "Car speed 1: " << ego_car_speed << endl;
 
           // Previous path data given to the Planner
           auto previous_path_x = j[1]["previous_path_x"];
@@ -435,23 +453,16 @@ int main()
           // Sensor Fusion Data, a list of all other cars on the same side of the road.
           auto sensor_fusion = j[1]["sensor_fusion"];
 
-          //cout << "Car speed 1: " << ego_car_speed << endl;
-
-//==============================================================================
-//==============================================================================
-//==============================================================================
-//==============================================================================
           int prev_size = previous_path_x.size();
           int next_wp;
-          bool too_close = false;
           bool trigger_lane_change = false;
           bool lc_left = false;
           bool lc_right = false;
 
           double distance_closest_check = 100000;
 
-          // reference x, y, yaw states
-          // either we will reference the starting points as where the is or at the previous paths and point
+          // Reference x, y, yaw states.
+          // Either we will reference the starting points as where the is or at the previous paths and point
           double ref_x;
           double ref_y;
           double ref_x_prev;
@@ -466,6 +477,8 @@ int main()
           {
             ego_car_s = end_path_s;
 
+            // Ego car has travelled a bit so we can calculate its real speed
+            // and update the waypoint from the prvious path
             if(prev_size > 2)
             {
               ref_x      = previous_path_x[prev_size-1];
@@ -476,6 +489,7 @@ int main()
 
               ref_yaw = atan2(ref_y - ref_y_prev, ref_x - ref_x_prev);
 
+              // Next waypoint is used for lane change hysteresis
               next_wp = NextWaypoint(ref_x, ref_y, ref_yaw, map_waypoints_x, map_waypoints_y);
 
               // Calculate real speed of the ego car from previous path points
@@ -491,11 +505,15 @@ int main()
             ref_x = car_x;
             ref_y = car_y;
             ref_yaw = deg2rad(car_yaw);
+            // Next waypoint is used for lane change hysteresis
             next_wp = NextWaypoint(ref_x, ref_y, ref_yaw, map_waypoints_x, map_waypoints_y);
           }
 
 
-          // find ref_v to use
+          //====================================================================
+          // Lane and speed adjustments
+          //====================================================================
+          // Check if there's a car ahead
           for (int i=0; i<sensor_fusion.size(); i++)
           {
             // car is in my lane
@@ -533,37 +551,41 @@ int main()
             }
           }
 
-
+          // Adapt speed of ego car to new reference speed
           if (ref_vel > ego_car_speed)
           {
+            // Ego car can go faster
             ego_car_speed += 0.28;
             //cout << "Car speed 3: " << ego_car_speed << endl;
           }
           else if(ref_vel < ego_car_speed)
           {
+            // Ego car must go slower
             ego_car_speed -= 0.28;
             //cout << "Car speed 4: " << ego_car_speed << endl;
           }
 
 #if !USE_COST_FUNCTIONS
-          //try to change lanes if too close to car in front
+          // Check if a lane change has been triggered.
+          // Also built in a hysteresis to take into account if a lane change is
+          // ongoing. This prevents the car from being stuck between lanes.
           if ((trigger_lane_change) &&
               ((next_wp - lane_change_wp) % map_waypoints_x.size()) > 3)
           {
-            //first try to change to left lane
+            // First try to change to left lane from ego car (if available)
             if(ego_lane > 0)
             {
               lc_left = check_lane_free(ego_lane - 1, sensor_fusion, ego_car_s, prev_size);
             }
 
-            //next try to change to right lane
+            // Then try to change to right lane from ego car (if available)
             if(ego_lane < 2)
             {
               lc_right = check_lane_free(ego_lane + 1, sensor_fusion, ego_car_s, prev_size);
             }
           }
 
-
+          // Execute lane change and set waypoint accordingly (for hysteresis)
           if (lc_left)
           {
             ego_lane -= 1;
@@ -574,17 +596,19 @@ int main()
             ego_lane += 1;
             lane_change_wp = next_wp;
           }
-
 #else
           // TODO
-          //  - choose best lane by checking speed of car ahead
-          //  - try to stay in center lane
-          //  - choose best lane by changing to lane with largest distance to car ahead
-          //  - check for cars changing lanes
+          //  - choose best lane by checking speed of car ahead - DONE
+          //  - try to stay in center lane - TODO
+          //  - choose best lane by changing to lane with largest distance to car ahead - DONE
+          //  - check for cars changing lanes - TODO
 
+          // Init best lane
           int best_lane = ego_lane;
 
-          //try to change lanes if too close to car in front
+          // Check if a lane change has been triggered.
+          // Also built in a hysteresis to take into account if a lane change is
+          // ongoing. This prevents the car from being stuck between lanes.
           if ((trigger_lane_change) &&
               ((next_wp - lane_change_wp) % map_waypoints_x.size()) > 3)
           {
@@ -594,6 +618,7 @@ int main()
             double min_distance = 10;
             double best_cost = 1000000;
 
+            // Create set of lanes where ego car can change to
             switch (ego_lane)
             {
               case 0:
@@ -606,58 +631,67 @@ int main()
                 lanes_available = {1, 2};
                 break;
               default:
+                // Error - shouldn't get here
                 lanes_available = {};
                 break;
             }
 
+            // Calculate cost for each lane in the set
             for (int lane_check: lanes_available)
             {
               double cost = 0;
 
               cout << "Lane to check: " << lane_check << endl;
 
-              // lane cost
+              // Lane change cost (car tries to stay in its lane)
               if (lane_check != ego_lane)
               {
                 cost += 500;
                 cout << "\tAdd cost lane change. Total cost: " << cost << endl;
               }
 
-              // get distance and speed of closest car ahead
+              // Get distance and speed of closest car ahead
               vector<double> car_ahead = get_closest_car_ahead(lane_check, sensor_fusion, ego_car_s, prev_size);
               distance_closest_check = car_ahead[0];
               closest_speed = car_ahead[1];
               cout << "\tCar ahead dist/speed: " << distance_closest_check << " / " << closest_speed << "   (ref_vel):" << ref_vel << endl;
 
-              // speed cost
+              // Speed cost of car ahead
               double norm = normalise(2 *  (speedlimit() - closest_speed) / closest_speed);
               cost +=  norm * 1000;
               cout << "\tAdd cost speed. Total cost: " << cost << "   Norm: " << norm << endl;
 
-              // distance ahead cost
+              // Distance cost of car ahead
               cost += normalise(2*min_distance/distance_closest_check) * 1000;
               cout << "\tAdd cost distance ahead. Total cost: " << cost << endl;
+
+              // If car ahead is wihtin minimum distance add high cost,
+              // basically blocking this lane.
               if (distance_closest_check < min_distance)
               {
                 cost += 10000;
                 cout << "\tAdd cost ahead min_distance. Total cost: " << cost << endl;
               }
 
-              // get distance and speed of closest car behind
+              // Get distance and speed of closest car behind
               vector<double> car_behind = get_closest_car_behind(lane_check, sensor_fusion, ego_car_s, prev_size);
               distance_closest_check = car_behind[0];
               closest_speed = car_behind[1];
               cout << "\tCar behind dist/speed: " << distance_closest_check << " / " << closest_speed << endl;
 
-              // distance behind cost
+              // Distance cost of car behind - not used
               //cost += normalise(2*min_distance/distance_closest_check) * 1000;
               //cout << "\tAdd cost distance behind. Total cost: " << cost << endl;
+
+              // If car behind is wihtin minimum distance add high cost,
+              // basically blocking this lane.
               if (distance_closest_check < min_distance)
               {
                 cost += 10000;
                 cout << "\tAdd cost behind min_distance. Total cost: " << cost << endl;
               }
 
+              // Save best cost and best lane
               if (cost < best_cost)
               {
                 best_lane = lane_check;
@@ -666,26 +700,30 @@ int main()
               }
             }
 
-            // change lanes
+            // Set best lane for ego car, triggering lane change in required
             ego_lane = best_lane;
           }
 
+          // Set waypoint in case of lane change - for hysteresis
           if (best_lane != ego_lane)
           {
             lane_change_wp = next_wp;
           }
 #endif
+          //====================================================================
+          // Trajectory generation
+          //====================================================================
 
-
-          // create list of widely spaces x, y waypoints, evenly spaced at 30m
-          // later we will interpolate these waypoints with a spline and fill it in with more points that control speed
+          // Create list of widely spaces x, y waypoints, evenly spaced at 30m
+          // These waypoints will be interpolated with a spline and filled in
+          // with more points that control the speed of the ego car.
           vector<double> ptsx;
           vector<double> ptsy;
 
-          // if previous size is almost empty
+          // In case previous planned path is almost empty
           if (prev_size < 2)
           {
-            // use 2 points that make the path tanget to the car
+            // Use 2 points that make the path tanget to the car
             double prev_car_x = car_x - cos(car_yaw);
             double prev_car_y = car_y - sin(car_yaw);
 
@@ -697,9 +735,10 @@ int main()
           }
           else
           {
-            // use the previous path's end point as starting reference
+            // Previous path was long enough so use the previous path's
+            // end point as starting reference
 
-            // redefine reference state as previous path end point
+            // Redefine reference state as previous path end point
             ref_x = previous_path_x[prev_size-1];
             ref_y = previous_path_y[prev_size-1];
 
@@ -708,7 +747,8 @@ int main()
 
             ref_yaw = atan2(ref_y - ref_y_prev, ref_x - ref_x_prev);
 
-            // use two points that make the path tangent to the previous path's end point
+            // Use two points that make the path tangent to the previous
+            // path's end point
             ptsx.push_back(ref_x_prev);
             ptsx.push_back(ref_x);
 
@@ -718,7 +758,8 @@ int main()
 
           //cout << "ego_lane " << ego_lane << endl;
 
-          // in frenet add evenly 30m spaced points ahead of the starting reference
+          // Create spline base points in frenet. Evenly spaced at 30m 
+          // ahead of the starting reference
           vector<double> next_wp0 = getXY(ego_car_s + (1 * spline_distance()), get_lane_center_in_frenet(ego_lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
           vector<double> next_wp1 = getXY(ego_car_s + (2 * spline_distance()), get_lane_center_in_frenet(ego_lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
           vector<double> next_wp2 = getXY(ego_car_s + (3 * spline_distance()), get_lane_center_in_frenet(ego_lane), map_waypoints_s, map_waypoints_x, map_waypoints_y);
@@ -731,10 +772,10 @@ int main()
           ptsy.push_back(next_wp1[1]);
           ptsy.push_back(next_wp2[1]);
 
-
+          // Shift car reference angle to 0 degree, basically using car
+          // coordinates rather than global coordinates.
           for (int i = 0; i < ptsx.size(); i++)
           {
-            // shoft car reference angle to 0 degree
             double shift_x = ptsx[i] - ref_x;
             double shift_y = ptsy[i] - ref_y;
 
@@ -742,37 +783,40 @@ int main()
             ptsy[i] = (shift_x * sin(0-ref_yaw) + shift_y * cos(0-ref_yaw));
           }
 
-
-          // create a spline
+          // Create a spline
           tk::spline s;
 
-          // set x, y points to the spline
+          // Set x, y points to the spline
           s.set_points(ptsx, ptsy);
 
-          // define the actual x, y points we will use for the planner
+          // Define the actual x, y points used for the planner
           vector<double> next_x_vals;
           vector<double> next_y_vals;
 
-          // start with all of the previous path points from last time
+          // Start with all of the previous path points from last time
+          // Normally, the loop count will be just 1 or 2 as the update rate
+          // is much higher than distance the car travels during each interval.
           for (int i = 0; i < previous_path_x.size(); i++)
           {
             next_x_vals.push_back(previous_path_x[i]);
             next_y_vals.push_back(previous_path_y[i]);
           }
 
-
-          // calculate how to break up spline points so that we travel at our desired velocity
+          // Calculate how to break up spline points so that we travel
+          // at our desired velocity (which is defined by the distance between
+          // points)
           double target_x = spline_distance();
           double target_y = s(target_x);
           double target_dist = sqrt(target_x * target_x + target_y * target_y);
 
           double x_add_on = 0;
 
-          // fill up the rest of our path planner after filling if with previous points, here we will always ouput 50 points
+          // After filling the planner with previous points now fill up the rest
+          // of it. Output here is always 50 points.
           //cout << "prev path size: " << previous_path_x.size() << endl;
           for (int i = 1; i <= 50 - previous_path_x.size(); i++)
           {
-            double N = (target_dist / (time_step() * ego_car_speed/convert_kmh_to_mph()));
+            double N = (target_dist / (time_step() * ego_car_speed / convert_kmh_to_mph()));
             double x_point = x_add_on + (target_x / N);
             double y_point = s(x_point);
 
@@ -781,7 +825,7 @@ int main()
             double x_ref = x_point;
             double y_ref = y_point;
 
-            // rotate back to normal after roatating it earlier
+            // Shift back to global coordinates
             x_point = (x_ref * cos(ref_yaw) - y_ref * sin(ref_yaw));
             y_point = (x_ref * sin(ref_yaw) + y_ref * cos(ref_yaw));
 
@@ -792,14 +836,10 @@ int main()
             next_y_vals.push_back(y_point);
           }
 
-//==============================================================================
-//==============================================================================
-//==============================================================================
-//==============================================================================
-
-
+          //====================================================================
+          // Send trajectory to simulator
+          //====================================================================
           json msgJson;
-          // TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
           msgJson["next_x"] = next_x_vals;
           msgJson["next_y"] = next_y_vals;
 
