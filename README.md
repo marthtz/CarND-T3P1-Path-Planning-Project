@@ -1,13 +1,89 @@
 # CarND-Path-Planning-Project
 Self-Driving Car Engineer Nanodegree Program
-   
-### Simulator.
+
+![carnd_t3p1_pathplanning_screenshot](carnd_t3p1_pathplanning.jpg)
+
+---
+
+## Project Summary
+The task was to build a path planner that successfully navigates a car through traffic on a highway. The car must be able to
+* follow a smooth trajectory
+* avoid crashes
+* obey speed limit
+* change lanes
+
+The goal is to have the car drive at max speed (speed limit) as often as possible. As other cars are on the road that travel at various speeds, the controlled vehicle (EGO vehicle) has to change lanes in order to keep moving as quickly as possible. All actions of the car (acceleration, braking, lane change) have to be smooth to provide a pleasant experience for the passengers.
+
+The program is executed without any arguments using the following command (for build instructions see Basic Build Instructions below):
+```
+./path_planning
+```
+
+## Implementation
+The main parts of the implementation can be summarized as:
+1. Determine EGO vehicle parameters (speed, previous path points, etc)
+2. Check lane ahead for any obstructions. If any obstruction is observed, consider changing lanes and adjust speed. If obstruction is very close reduce speed.
+3. Calculate cost for each possible lane.
+4. Generate new trajectory based on best lane.
+
+#### EGO vehicle parameters
+Based on the last to positions (x/y, yaw) of the EGO vehicle, the next waypoint as well as the actual speed of the car can be calculated. The waypoint is important for the lane changing procedure. This procedure has an hysteresis built it to avoid lane changes while a lane change is already happening. This hysteresis is done by keeping track of the waypoint when a lane change was triggered and the number of waypoints since the lane change trigger waypoint.
+The real speed is used to accurately adjust the speed to a possible upcoming car ahead that travels at slower speed.
+
+#### Check lane ahead
+The simulator provides sensor fusion data for all cars on the highway. This data includes position (x/y and Frenet s/d) that can be used to determine the speed and lane of each car as well as the distance to the EGO vehicle.
+
+First step is to check if there's any car in front of the EGO vehicle. If that's the case in the car ahead is within a certain limit, a lane change is triggered and as a precaution the reference speed is set to match the speed of the car ahead. An additional safety check is implemented in case the car ahead is very close. In this case, the reference speed is set 5 mph lower in order to increase the distance between the cars. Next step is to adjust the EGO car's speed to the reference velocity.
+
+#### Cost for each lane
+If a lane change has been triggered and a lane change hasn't happened recently a cost for each possible lane is being calculated to determine the best lane the EGO should drive in. A triggered lane change is being skipped if a lane change has already occured within the last 3 waypoints.
+
+The current status of the implementation is that only one lane change is permitted. That means, if the EGO vehicle is driving in the left or right lane (IDs 0 and 2) it has only 2 lane options (the lane it's in now and the one next to its lane). Only when the car is driving in the center lane (ID 1) the EGO vehicle has 3 lane options. This is to avoid rough lane changes and could be optimized later.
+
+So, for each possible lane the sensor fusion data is being examined for the speed and distance of cars ahead and behind.
+
+The cost for each lane consists of:
+* lane change (penalty for changing lanes - car tries to stay in its lane)
+* distance to vehicle ahead
+* extra penalty if distance is very close (basiclly to block the lane totally because it's too dangerous)
+* speed of vehicle ahead
+* extra penalty if distance of car behind is very close (basiclly to block the lane totally because it's too dangerous)
+
+Finally, the lane with the lowest cost is considered best and set as the new lane for the EGO vehicle.
+
+#### Generate new trajectory
+In the walkthrough video the method of choice was using a spline interpolation to generate smooth trajectories with minimal jerk. The path generated at each simulator time step has a size of 50 points. The distance between the points determines the speed of the EGO vehicle. First step is to generate a trajectory and then in a second step to re-align the points along this trajectory and space them evenly to match the desired speed.
+
+The procedure to generate a trajectory is to supply the spline algorithm with 5 points and interpolate the points in between. The first 2 points are taken from the previous path (to allow a continuous drive) and the other 3 points are calculated from the current position but ahead of the EGO car at 30m, 60m and 90m in the best lane (see cost functions). This is resulting in a very smooth trajectory.
+
+Next step is to re-align the trajectory path points to match the desired velocity. For simplification, the trajectory is considered to be limear (error is negligible). This simplification allows us to simply divide the line into evenly spaced fractions in relation to the desired speed and the simulator time step interval.
+
+The new path always contains parts of the previously used trajectory in order to generate a continuous path.
+
+## Future optimizations
+The current status of the implementation runs smoothly around the track, however, the following improvements could be implemented for a better and safer experience:
+* EGO car should change back to center lane if possible (to have rmore lane options)
+* Consider average speed of all cars in each lane and choose the fastest one
+* Sometimes, simulator controlled cars change lanes very dangerously (very quick and very close to the EGO car). This could be tracked by monitoring the acceleration in d-coordinates and trigger emergency braking if required.
+* Cost functions can be optimized and probably more aggressive.
+* Add double lane change (2 lanes in one go).
+
+## Final Result
+The current implementation drives the car smoothly around the track at speed limit. It changes lanes whenever required and possible by calculating cost for each lane and finally choosing the best one. However, the current cost calculation is quite conservative and tries to stay within its lane if the benefit is not big enough (this can be seen when the others cars are driving at nearly similar speed).
+
+A video of the car driving one lap in the simulator is uploaded to Youtube:
+
+[![](carnd_t3p1_pathplanning_yt.jpg)](https://youtu.be/-Ap98Lk72Sc)
+
+---
+
+## Simulator.
 You can download the Term3 Simulator which contains the Path Planning Project from the [releases tab (https://github.com/udacity/self-driving-car-sim/releases).
 
-### Goals
+## Goals
 In this project your goal is to safely navigate around a virtual highway with other traffic that is driving +-10 MPH of the 50 MPH speed limit. You will be provided the car's localization and sensor fusion data, there is also a sparse map list of waypoints around the highway. The car should try to go as close as possible to the 50 MPH speed limit, which means passing slower traffic when possible, note that other cars will try to change lanes too. The car should avoid hitting other cars at all cost as well as driving inside of the marked road lanes at all times, unless going from one lane to another. The car should be able to make one complete loop around the 6946m highway. Since the car is trying to go 50 MPH, it should take a little over 5 minutes to complete 1 loop. Also the car should not experience total acceleration over 10 m/s^2 and jerk that is greater than 50 m/s^3.
 
-#### The map of the highway is in data/highway_map.txt
+### The map of the highway is in data/highway_map.txt
 Each waypoint in the list contains  [x,y,s,dx,dy] values. x and y are the waypoint's map coordinate position, the s value is the distance along the road to get to that waypoint in meters, the dx and dy values define the unit normal vector pointing outward of the highway loop.
 
 The highway's waypoints loop around so the frenet s value, distance along the road, goes from 0 to 6945.554.
