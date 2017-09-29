@@ -152,7 +152,7 @@ vector<double> get_closest_car(int lane_to_check, json sensor_fusion, double ego
 
 
 //==============================================================================
-// 
+// Normalise a value to a factor with range -1 to +1
 //==============================================================================
 double normalise(double x)
 {
